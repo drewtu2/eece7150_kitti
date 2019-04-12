@@ -10,7 +10,7 @@ class State:
         self.registered_kp = []                 # List of Tuples(X, Y) - Index corresponds to matching landmark keypoint
         self.landmarks = []                     # List of Tuples(X, Y, Z) - Index corresponds to matching registered keypoint
         self.candidate_kp = Candidates()        # Candidate Keypoints
-        self.pose_history = []                  # List of Tuples(X, Y, Z, R, P, Y) 
+        self.pose_history = [(0., 0., 0., 0., 0., 0.)]                  # List of Tuples(X, Y, Z, R, P, Y) 
 
 class Candidates:
     def __init__(self):
