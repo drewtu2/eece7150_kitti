@@ -1,17 +1,10 @@
+from typing import *
 import numpy as np
 
-class State:
-    def __init__(self):
-        '''
-        the actual data type for each member variable depends on implementation
-        '''
-        self.keypoints = []
-        self.landmarks = []
-        self.candidates = []
-        self.pose_history = []
+from VoClasses import *
 
 class VO_Pipeline:
-    def __init__(self, dataset):
+    def __init__(self, dataset: List[np.ndarray]):
         '''
         dataset: image dataset (list of images)
 
