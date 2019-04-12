@@ -74,6 +74,7 @@ class VO_Pipeline:
         landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ pose_cam1, INTRINSIC_MATRIX @ pose_cam2, 
         kps1_umat.reshape(-1, 1, 2), kps2_umat.reshape(-1, 1, 2))
 
+        #TODO: Need to save pose of the current images origin wrt to the world frame!
 
 
     def associate_keypoints(self, current_frame, prev_frame):
