@@ -1,6 +1,6 @@
-from Collections import namedtuple
+from collections import namedtuple
 
-FirstAndLast = namedtuple('FirstAndLast', ['first', 'last'], verbose=True)
+FirstAndLast = namedtuple('FirstAndLast', ['first', 'last'])
 
 class State:
     def __init__(self):
