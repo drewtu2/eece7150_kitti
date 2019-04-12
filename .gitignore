@@ -1,3 +1,5 @@
 venv
 **.swp
 **.pyc
+kitti00*
+sample
