@@ -75,7 +75,7 @@ class VO_Pipeline:
         kps1_umat.reshape(-1, 1, 2), kps2_umat.reshape(-1, 1, 2))
 
         #TODO: Need to save pose of the current images origin wrt to the world frame!
-
+        print(landmarks)
 
     def associate_keypoints(self, current_frame, prev_frame):
         '''
