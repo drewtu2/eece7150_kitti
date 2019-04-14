@@ -11,6 +11,10 @@ Odom = Tuple[float, float, float]
 LinkDict = Dict[int, Dict[int, Odom]]
 
 def plot_3d_landmarks(landmarks):
+    """
+    Takes in 3D Pose History and plots in world frame
+    """
+    return
 
 
 def get_image_corners(shape):

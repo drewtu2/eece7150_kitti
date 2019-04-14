@@ -47,6 +47,7 @@ class VO_Pipeline:
         # Get Keypoints and descriptors
         # kps_xx, desc_xx are np arrays of OpenCV Keypoints and OpenCV Descriptors
         kps1, desc1 = self.feature_detector.detectAndCompute(self.dataset[f1])
+
         kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[f2])
 
         # Match features, throw away candidates
