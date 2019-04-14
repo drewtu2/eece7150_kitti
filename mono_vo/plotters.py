@@ -3,20 +3,47 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 from typing import List, Dict, Tuple
 
 Odom = Tuple[float, float, float]
 LinkDict = Dict[int, Dict[int, Odom]]
+def rotation_matrix_fromRPY(R,P,Y):
+   R_mat = np.array([[np.cos(Y)*np.cos(P), np.cos(Y)*np.sin(P)*np.sin(R)-np.sin(Y)*np.cos(R), np.cos(Y)*np.sin(P)*np.cos(R)+np.sin(Y)*np.sin(R)],
+       [np.sin(Y)*np.cos(P), np.sin(Y)*np.sin(P)*np.sin(R)+np.cos(Y)*np.cos(R), np.sin(Y)*np.sin(P)*np.sin(R)-np.cos(Y)*np.sin(R)],
+       [-np.sin(P), np.cos(P)*np.sin(R), np.cos(P)*np.cos(R)]])
+   return R_mat
 
-def plot_3d_landmarks(landmarks):
-    """
-    Takes in 3D Pose History and plots in world frame
-    """
-    return
-
-
+def plot_3d_landmarks(pose,landmarks):
+    values=np.asarray(pose)
+    a,b=values.shape
+    index=range(a)
+    print(index)
+    ax = plt.gca(projection="3d")
+    xFrame=3
+    yFrame=1
+    zFrame=xFrame/3
+    for i in range(np.size(values,0)):
+        frameCorners=np.vstack(([-xFrame,yFrame,zFrame],[-xFrame,yFrame,-zFrame],[xFrame,yFrame,-zFrame],[xFrame,yFrame,zFrame],[-xFrame,yFrame,zFrame]))
+        rotationMatrix=rotation_matrix_fromRPY(values[i,3],values[i,4],values[i,5])
+        for j in range(5):
+            frameCorners[j,:]=(rotationMatrix@frameCorners[j,:].T).T
+        frameCorners[:,0]+=values[i,0]
+        frameCorners[:,1]+=values[i,1]
+        frameCorners[:,2]+=values[i,2]
+        ax.plot(frameCorners[:,0],frameCorners[:,1],frameCorners[:,2], color='b',alpha=0.5)
+        for j in range(5):
+            ax.plot((frameCorners[j,0],values[i,0]),(frameCorners[j,1],values[i,1]),(frameCorners[j,2],values[i,2]), color='b',alpha=0.5)
+    ax.scatter(values[:,0],values[:,1],values[:,2], c=index, cmap='gist_ncar',s=100)
+    ax.plot(values[:,0],values[:,1],values[:,2], color='r')
+    landmarkValues=np.asarray(landmarks)
+    a,b=landmarkValues.shape
+    index=range(a)
+    ax.scatter(landmarkValues[:,0],landmarkValues[:,1],landmarkValues[:,2], c=index, cmap='cool',s=10, alpha=1)
+    #ax.scatter(landmarkValues[:,0],landmarkValues[:,1],landmarkValues[:,2], c='k', s=10, alpha=0.5)
+    plt.show()
 def get_image_corners(shape):
     """
     Takes in an image shape and returns the corners as an 3x4 matrix
@@ -131,3 +158,19 @@ def displayMatches(img_left, kp1, img_right, kp2, matches, mask, display_invalid
                                    matchesMask=np.invert(bool_mask).ravel().tolist(),
                                    flags=1)
     return img_valid
+
+if __name__ == "__main__":
+    pose_history = np.array([[5,0,-4,0,0,0],
+       [3.5,3.5,-3,-0.1,0.1,np.pi/4],
+       [0,5,-2,-0.1,0.1,np.pi/2],
+       [-3.5,3.5,-1,-0.1,0.1,3*np.pi/4],
+       [-5,0,0,-0.1,0.1,np.pi],
+       [-3.5,-3.5,1,-0.1,0.1,5*np.pi/4],
+       [0,-5,2,-0.1,0.1,3*np.pi/2],
+       [3.5,-3.5,3,-0.1,0.1,7*np.pi/4]])
+    landmarks = np.array([[5,10,-4],
+       [4,11,-5],
+       [3,12,-3],
+       [6,9,-1],
+       [7,8,-2]])
+    plot_3d_landmarks(pose_history,landmarks)
