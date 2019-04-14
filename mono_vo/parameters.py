@@ -1,4 +1,13 @@
 import numpy as np
+
+from collections import namedtuple
+from typing import Tuple, List
+
+FirstAndLast = namedtuple('FirstAndLast', ['first', 'last'])
+Pose6Dof = Tuple[float, float, float, float, float, float]
+Point2D = Tuple[float, float]
+Point3D = Tuple[float, float, float]
+
 LOWE_RATIO = .7
 
 INTRINSIC_MATRIX = np.float32([ 
