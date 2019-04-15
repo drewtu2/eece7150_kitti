@@ -9,6 +9,11 @@ def match_features(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
     Matches a set of features and points using the given features matcher and 
     filtering the points using the LOWE RATIO Test.
     """
+    if isinstance(desc1, list):
+        desc1 = np.array(desc1)
+    if isinstance(desc2, list):
+        desc2 = np.array(desc2)
+
     matches = matcher.knnMatch(desc2, desc1, k=2)
 
     # Apply ratio test
@@ -46,6 +51,10 @@ def match_features_indices(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
     Matches a set of features and points using the given features matcher and 
     filtering the points using the LOWE RATIO Test.
     """
+    if isinstance(desc1, list):
+        desc1 = np.array(desc1)
+    if isinstance(desc2, list):
+        desc2 = np.array(desc2)
     matches = matcher.knnMatch(desc2, desc1, k=2)
 
     # Apply ratio test
@@ -90,8 +99,11 @@ def check_non_matched_promotion(feature_matcher, non_matched_kps, non_matched_de
     """
     
     # new keypoints
-    new_registered = []  #List[(non_matched_kp, non_matched_desc, frameid - 1, new_kp, new_desc)]
-
+    non_matched_registered_kp = []
+    non_matched_registered_desc = []
+    new_registered_kp = []
+    new_registered_desc = []
+    
     # new candidates
     new_candidates_kp = []
     new_candidates_desc = []
@@ -103,14 +115,15 @@ def check_non_matched_promotion(feature_matcher, non_matched_kps, non_matched_de
         non_matched_kps, non_matched_desc, new_kps, new_desc = \
         match_features(feature_matcher, non_matched_kps, non_matched_desc, new_kps, new_desc)
 
-    for index in len(temp_matched_kps):
+    for index in range(len(temp_matched_kps)):
 
         if euclidean_distance_from_kp(temp_matched_kps[index], temp_new_matched_kps[index]) > CANDIDATE_THRESHOLD:
             # If the distance between the two keypoints is large enough, lets promote
             # to a landmark. Do not mark to add back as keypoint
-            temp = (temp_matched_kps[index], temp_matched_desc[index], frame_id-1, \
-                temp_new_matched_kps[index], temp_new_matched_desc[index])
-            new_registered.append(temp)
+            non_matched_registered_kp.append(temp_matched_kps[index])
+            non_matched_registered_desc.append(temp_matched_desc[index])
+            new_registered_kp.append(temp_new_matched_kps[index])
+            new_registered_desc.append(temp_new_matched_desc[index])
         else:
             # This matched point did not move far enough in the match. It needs to be added
             # as a candidate. 
@@ -121,6 +134,9 @@ def check_non_matched_promotion(feature_matcher, non_matched_kps, non_matched_de
     # Update the values. Only the features that were seen this round were kept. 
     promoted_candidates = Candidates()
     promoted_candidates.set_kps_desc_frame(new_candidates_kp, new_candidates_desc, new_candidates_frames)
+
+    new_registered = (non_matched_registered_kp, non_matched_registered_desc, \
+        new_registered_kp, new_registered_desc)
 
     return new_registered, promoted_candidates, new_kps, new_desc
 
@@ -144,7 +160,7 @@ def check_candidate_promotion(feature_matcher, candidates, new_kps, new_desc):
 
     # Short circuit the null candidate case 
     if len(candidate_kp) == 0:
-        return [], [], candidates, new_kps, new_desc
+        return [], candidates, new_kps, new_desc
 
     # new landmarks
     new_landmark_candidate_kp = []
@@ -164,7 +180,7 @@ def check_candidate_promotion(feature_matcher, candidates, new_kps, new_desc):
     candidate_match_index, new_match_index, candidate_non_matched_index, new_non_match_index \
         = match_features_indices(feature_matcher, candidate_kp, candidate_desc, new_kps, new_desc)
 
-    for ii in len(candidate_match_index):
+    for ii in range(len(candidate_match_index)):
         index = candidate_match_index[ii]
         new_index = new_match_index[ii]
         if euclidean_distance_from_kp(candidate_kp[index], new_kps[new_index]) > CANDIDATE_THRESHOLD:
@@ -241,6 +257,11 @@ def extract_rpy(transition_matrix) -> Tuple[float, float, float]:
     denom = np.sqrt(r[2,1]**2 + r[2, 2]**2)
     pitch = np.arctan2(-r[2, 0], denom)
 
+    # We're lost here....
+    temp = roll
+    roll = yaw
+    yaw = -temp
+
     return roll, pitch, yaw
 
 def scale_landmarks(landmarks):
@@ -259,9 +280,38 @@ def extract_landmarks(landmarks) -> List[Point3D]:
     # return scaled_landmarks.tolist()
     return [tuple(l) for l in scaled]
 
+def batch_proposed_landmarks(proposed_landmarks):
+    # input is a List[Tuple(kp1, desc1, frame1, kp2, desc2)]
+
+    # 0:
+    #   ([kp1.1, ..., kp1.n],
+    #    [kp2.1, ..., kp2.n],
+    #    [desc2.1, ..., desc2.n])
+    # 2: <- key = frame #
+    #   ([kp1.1, ..., kp1.n],
+    #    [kp2.1, ..., kp2.n],
+    #    [desc2.1, ..., desc2.n])
+    batches = {}
+
+    for proposal in proposed_landmarks:
+        frame_id = int(proposal[2])
+        
+        if frame_id in batches:
+            batches[frame_id][0].append(proposal[0])
+            batches[frame_id][1].append(proposal[3])
+            batches[frame_id][2].append(proposal[4])
+        else:
+            batches[frame_id] = ([proposal[0]], [proposal[3]], [proposal[4]])
+    
+    return batches
+
+
+
 ####################################################
 # Triangulation of Proposed Keypoints
 ####################################################
+
+
 def triangulate_proposed(proposed_landmarks, pose_history):
     """
     @proposed_landmarks: List[Tuple(kp1, desc1, frame1, kp2, desc2)]
@@ -293,6 +343,7 @@ def T_from_PNP(coord_3d, img_pts, K, D):
 
         return success, compose_T(*pose_inv(R_to_obj, tvecs_to_obj)), mask
     else: 
+        print("NO POSE CALCULATED")
         return success, None, None
 
 def compose_T(R,t):

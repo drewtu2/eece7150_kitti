@@ -21,6 +21,12 @@ class VO_Pipeline:
         self.feature_detector = TiledDetector(cv2.ORB_create(), 8, 17)
         self.feature_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
     
+    def run(self):
+        self.initialize_pipeline(0, 1)
+
+        for index in range(2, len(self.dataset) - 1):
+            self.run_iteration(index)
+
     def load_images(self, image_folder):
         """
         Loads all the images
@@ -33,7 +39,6 @@ class VO_Pipeline:
         
         print("Loaded {} images".format(len(img_array)))
         return img_array
-
 
     def initialize_pipeline(self, f1: int, f2: int):
         '''
@@ -78,14 +83,13 @@ class VO_Pipeline:
         _, T, mask = T_from_PNP(scale_landmarks(landmarks).T, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
 
         #Update the current state to be passed on...
-        pose = extract_pose(T)
-        self.current_state.add_pose(pose)
+        self.current_state.add_pose(T)
         self.current_state.set_lm_kp(extract_landmarks(landmarks), kps2, desc2)
         self.current_state.set_non_matched(kps2_non_matched, desc2_non_matched)
     
         print(self.current_state)
 
-    def run_pipeline(self, new_frame):
+    def run_iteration(self, new_frame):
         '''
         4.1 Assosciate keypoints
             detect features in current_frame
@@ -107,7 +111,7 @@ class VO_Pipeline:
         # kps2_non_matched represent all the keypoints we found in this iteration that are not
         # already registered landmarks
         reg_match_index, new_match_index, reg_non_matched_index, new_non_match_index \
-            = match_features_indices(self.feature_matcher, reg_kps1, reg_desc1, kps2, desc2)
+            = match_features_indices(self.feature_matcher, reg_kps1, np.array(reg_desc1), kps2, desc2)
 
         # extract the actual values
         #reg_kps1 = [reg_kps1[idx] for idx in reg_match_index]
@@ -115,8 +119,8 @@ class VO_Pipeline:
         reg_landmarks = [self.prev_state.landmarks[idx] for idx in reg_match_index]
         reg_kps2 = [kps2[idx] for idx in new_match_index]
         reg_desc2 = [desc2[idx] for idx in new_match_index]
-        kps2_non_matched = [reg_kps2[idx] for idx in new_non_match_index]
-        desc2_non_matched = [reg_desc2[idx] for idx in new_non_match_index]
+        kps2_non_matched = [kps2[idx] for idx in new_non_match_index]
+        desc2_non_matched = [desc2[idx] for idx in new_non_match_index]
 
         self.current_state.set_lm_kp(reg_landmarks, reg_kps2, reg_desc2)
         self.estimate_current_pose()    # adds the current pose to current_state
@@ -146,8 +150,8 @@ class VO_Pipeline:
         
         # at this point, current_state is ready to add new landmarks
         # triangulate proposed registered keypoints
-        self.triangulate_proposed_landmarks(proposed_candidate_landmarks)
-        self.triangulate_proposed_landmarks(proposed_non_match_landmarks)
+        self.triangulate_proposed_landmarks(proposed_candidate_landmarks, False)
+        self.triangulate_proposed_landmarks(proposed_non_match_landmarks, True)
 
     def estimate_current_pose(self):
         '''
@@ -159,16 +163,15 @@ class VO_Pipeline:
         '''        
 
         landmarks = self.current_state.get_landmarks()
+        landmarks = np.array(landmarks)
         kps2_umat = keypoints_to_umat(self.current_state.get_registered_kp())
-        _, T, mask = T_from_PNP(scale_landmarks(landmarks).T, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
+        _, T, mask = T_from_PNP(landmarks, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
 
         #Update the current state to be passed on...
-        pose = extract_pose(T)
-
-        self.current_state.add_pose(pose)
+        self.current_state.add_pose(T)
 
 
-    def triangulate_proposed_landmarks(self, proposed_landmarks):
+    def triangulate_proposed_landmarks(self, proposed_landmarks, is_nonmatched):
         '''
         4.3 Triangulate new landmarks
             triangulate new landmarks from unregistered features and landmarks
@@ -176,16 +179,34 @@ class VO_Pipeline:
             input: self.prev_state(candidates, pose_history)
             output: self.current_state(keypoints, landmarks, candidates, pose_history)
         '''
-        pass
+        if is_nonmatched:
 
-    def _update_correspondences(self):
-        '''
-        helper function to update 2d-3d correspondences (3.2-3.5)
+            kps1_umat = keypoints_to_umat(proposed_landmarks[0])
+            kps2_umat = keypoints_to_umat(proposed_landmarks[2])
 
-        '''
-        pass
+            pose_cam1 = self.current_state.get_pose_history()[-2][0:3, :]
+            pose_cam2 = self.current_state.get_pose_history()[-1][0:3, :]
 
+            landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ pose_cam1, INTRINSIC_MATRIX @ pose_cam2, 
+            kps1_umat.reshape((-1, 1, 2)), kps2_umat.reshape((-1, 1, 2)))
+            lm = extract_landmarks(landmarks)
+            self.current_state.add_lm_kp(lm, list(proposed_landmarks[2]), list(proposed_landmarks[3]))
+        else:
+            # input is a List[Tuple(kp1, desc1, frame1, kp2, desc2)]
+            batches = batch_proposed_landmarks(proposed_landmarks)
+
+            for key, value in batches.items():
+                kps1_umat = keypoints_to_umat(value[0])
+                kps2_umat = keypoints_to_umat(value[1])
+            
+                pose_cam1 = self.current_state.get_pose_history()[key][0:3, :]
+                pose_cam2 = self.current_state.get_pose_history()[-1][0:3, :]
+                
+                landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ pose_cam1, INTRINSIC_MATRIX @ pose_cam2, 
+                kps1_umat.reshape((-1, 1, 2)), kps2_umat.reshape((-1, 1, 2)))
+                lm = extract_landmarks(landmarks)
+                self.current_state.add_lm_kp(lm, list(value[1]), list(value[2]))
     
 if __name__ == "__main__":
     vp = VO_Pipeline("sample/*.png")
-    vp.initialize_pipeline(0, 1)
+    vp.run()

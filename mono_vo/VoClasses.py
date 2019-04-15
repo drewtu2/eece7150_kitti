@@ -21,7 +21,7 @@ class State:
         self.non_matched_desc = []
         
         # History of all poses
-        self.pose_history = [(0, 0, 0, 0, 0, 0)]                  # List of Tuples(X, Y, Z, R, P, Y) 
+        self.pose_history = [np.eye(4)]
 
     def add_pose(self, new_pose: Pose6Dof):
         self.pose_history.append(new_pose)
@@ -40,12 +40,24 @@ class State:
         self._set_landmarks(new_landmarks)
         self._set_registered_keypoints(new_keypoints)
         self._set_registered_descriptors(new_desc)
+    
+    def add_lm_kp(self, new_landmarks, new_keypoints, new_desc):
+        """
+        Updates the existing landmarks and corresponding keypoints with the new values.
+        """
+        self.landmarks.extend(new_landmarks)
+        self.registered_kp.extend(new_keypoints)
+        self.registered_desc.extend(new_desc)
 
     def set_pose_history(self, pose_history):
         self.pose_history = pose_history
 
     def set_candidates(self, candidates):
-        self.candidates = copy.deepcopy(candidates)
+        t_kp = candidates.get_kps()
+        t_desc = candidates.get_descs()
+        t_frames = candidates.get_frames()
+        self.candidates = Candidates()
+        self.candidates.set_kps_desc_frame(t_kp, t_desc, t_frames)
 
     def get_pose_history(self) -> List[Pose6Dof]:
         return list(self.pose_history)
@@ -69,7 +81,7 @@ class State:
         """
         Overwites the existing set of keypoints with a new set of keypoints
         """
-        self.landmarks = list(new_keypoints)
+        self.registered_kp = list(new_keypoints)
     
     def _set_registered_descriptors(self, new_desc):
         """
@@ -106,7 +118,7 @@ class Candidates:
     def get_desc(self, index):
         return self.descriptors[index]
     
-    def extend(self, new_candidates: Candidates):
+    def extend(self, new_candidates):
         self.keypoints.extend(new_candidates.get_kps())
         self.descriptors.extend(new_candidates.get_descs())
         self.frames.extend(new_candidates.get_frames())
