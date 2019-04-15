@@ -2,6 +2,7 @@ from parameters import *
 import numpy as np
 from typing import Tuple
 import cv2
+from VoClasses import *
 
 def match_features(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
     """
@@ -75,45 +76,53 @@ def match_features_indices(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
 def keypoints_to_umat(keypoints):
     return np.float32([point.pt for point in keypoints])
 
-def check_non_matched_promotion(feature_matcher, non_matched_kps, non_matched_desc, new_kps, new_desc):
+def check_non_matched_promotion(feature_matcher, non_matched_kps, non_matched_desc, new_kps, new_desc, frame_id):
     """
-    """
+    @param feature_matcher: an OpenCV feature matcher to use for comparisions
+    @param non_matched_kps: the non matched keypoints from the previous frame
+    @param non_matched_desc: the associated descriptors
+    @param new_kps:  the new keypoints to check against
+    @param new_desc: the associated descriptors
+    @param frame_id: the frame number of the new frame. Any candidates registered
+    will use frame_id-1 as the first frame seen. 
 
-    # new landmarks
-    new_landmark_kp = []
-    new_landmark_desc = []
+    returns List[Tuple[prev_kp, prev_desc, frame_id-1, new_kp, new_desc]], Candidates, non_matched_kps, non_matched_desc
+    """
     
     # new keypoints
-    updated_candidates_kp = []
-    updated_candidates_desc = []
-    updated_candidates_frames = []
+    new_registered = []  #List[(non_matched_kp, non_matched_desc, frameid - 1, new_kp, new_desc)]
+
+    # new candidates
+    new_candidates_kp = []
+    new_candidates_desc = []
+    new_candidates_frames = []
 
     # get the INDICES of the matches between images (instead of the actual kps/desc)
     # we can use the indices to access the kps/desc/frames accordingly. 
-    candidate_match_index, new_match_index, candidate_non_matched_index, new_non_match_index \
-        = match_features_indices(feature_matcher, candidate_kp, candidate_desc, new_kps, new_desc)
+    temp_matched_kps, temp_matched_desc, temp_new_matched_kps, temp_new_matched_desc, \
+        non_matched_kps, non_matched_desc, new_kps, new_desc = \
+        match_features(feature_matcher, non_matched_kps, non_matched_desc, new_kps, new_desc)
 
-    for ii in len(candidate_match_index):
-        index = candidate_match_index[ii]
-        new_index = new_match_index[ii]
-        if euclidean_distance_from_kp(candidate_kp[index], new_kps[new_index] > CANDIDATE_THRESHOLD):
+    for index in len(temp_matched_kps):
+
+        if euclidean_distance_from_kp(temp_matched_kps[index], temp_new_matched_kps[index]) > CANDIDATE_THRESHOLD:
             # If the distance between the two keypoints is large enough, lets promote
             # to a landmark. Do not mark to add back as keypoint
-            new_landmark_kp.append(candidate_kp[index])
-            new_landmark_desc.append(candidate_desc[index])
+            temp = (temp_matched_kps[index], temp_matched_desc[index], frame_id-1, \
+                temp_new_matched_kps[index], temp_new_matched_desc[index])
+            new_registered.append(temp)
         else:
-            # This candidate did not move far enough in the match. It needs to stay
+            # This matched point did not move far enough in the match. It needs to be added
             # as a candidate. 
-            updated_candidates_kp.append(candidates.get_kp(index))
-            updated_candidates_desc.append(candidates.get_desc(index))
-            updated_candidates_frames.append(candidates.get_frame(index))
+            new_candidates_kp.append(temp_matched_kps[index])
+            new_candidates_desc.append(temp_matched_desc[index])
+            new_candidates_frames.append(frame_id-1)
     
     # Update the values. Only the features that were seen this round were kept. 
-    candidates.set_kps_desc_frame(updated_candidates_kp, updated_candidates_desc, updated_candidates_frames)
+    promoted_candidates = Candidates()
+    promoted_candidates.set_kps_desc_frame(new_candidates_kp, new_candidates_desc, new_candidates_frames)
 
-    new_non_matched = [new_kps[ii] for ii in new_non_match_index]
-    desc_non_matched = [new_desc[ii] for ii in new_non_match_index]
-    return new_landmark_kp, new_landmark_desc, candidates, new_non_matched, desc_non_matched
+    return new_registered, promoted_candidates, new_kps, new_desc
 
 def check_candidate_promotion(feature_matcher, candidates, new_kps, new_desc):
     """
@@ -129,14 +138,19 @@ def check_candidate_promotion(feature_matcher, candidates, new_kps, new_desc):
     """
 
     # get the relevant keypoints
-    candidate_kp = candidates.get_kp()
+    candidate_kp = candidates.get_kps()
     candidate_desc = candidates.get_descs()
+    candidate_frame = candidates.get_frames()
 
     # Short circuit the null candidate case 
     if len(candidate_kp) == 0:
         return [], [], candidates, new_kps, new_desc
 
     # new landmarks
+    new_landmark_candidate_kp = []
+    new_landmark_candidate_desc = []
+    new_landmark_candidate_frame = []
+
     new_landmark_kp = []
     new_landmark_desc = []
     
@@ -153,24 +167,32 @@ def check_candidate_promotion(feature_matcher, candidates, new_kps, new_desc):
     for ii in len(candidate_match_index):
         index = candidate_match_index[ii]
         new_index = new_match_index[ii]
-        if euclidean_distance_from_kp(candidate_kp[index], new_kps[new_index] > CANDIDATE_THRESHOLD):
+        if euclidean_distance_from_kp(candidate_kp[index], new_kps[new_index]) > CANDIDATE_THRESHOLD:
             # If the distance between the two keypoints is large enough, lets promote
             # to a landmark. Do not mark to add back as keypoint
-            new_landmark_kp.append(candidate_kp[index])
-            new_landmark_desc.append(candidate_desc[index])
+            new_landmark_candidate_kp.append(candidate_kp[index])
+            new_landmark_candidate_desc.append(candidate_desc[index])
+            new_landmark_candidate_frame.append(candidate_frame[index])
+
+            new_landmark_kp.append(new_kps[new_index])
+            new_landmark_desc.append(new_desc[new_index])
         else:
             # This candidate did not move far enough in the match. It needs to stay
             # as a candidate. 
-            updated_candidates_kp.append(candidates.get_kp(index))
-            updated_candidates_desc.append(candidates.get_desc(index))
-            updated_candidates_frames.append(candidates.get_frame(index))
+            updated_candidates_kp.append(candidate_kp[index])
+            updated_candidates_desc.append(candidate_desc[index])
+            updated_candidates_frames.append(candidate_frame[index])
     
     # Update the values. Only the features that were seen this round were kept. 
     candidates.set_kps_desc_frame(updated_candidates_kp, updated_candidates_desc, updated_candidates_frames)
 
     new_non_matched = [new_kps[ii] for ii in new_non_match_index]
     desc_non_matched = [new_desc[ii] for ii in new_non_match_index]
-    return new_landmark_kp, new_landmark_desc, candidates, new_non_matched, desc_non_matched
+
+    proposed_candidate_landmarks = zip(new_landmark_candidate_kp, new_landmark_candidate_desc, new_landmark_candidate_frame, \
+        new_landmark_kp, new_landmark_desc)
+
+    return proposed_candidate_landmarks, candidates, new_non_matched, desc_non_matched
 
 def euclidean_distance_from_kp(kp1, kp2):
     """
@@ -236,6 +258,18 @@ def extract_landmarks(landmarks) -> List[Point3D]:
     # scaled_landmarks is now Nx3
     # return scaled_landmarks.tolist()
     return [tuple(l) for l in scaled]
+
+####################################################
+# Triangulation of Proposed Keypoints
+####################################################
+def triangulate_proposed(proposed_landmarks, pose_history):
+    """
+    @proposed_landmarks: List[Tuple(kp1, desc1, frame1, kp2, desc2)]
+    @pose_history: List[Pose6Dof]
+    """
+
+    # Sort tuples based on frame id
+    # Batch sorted tuples
 
 
 #############

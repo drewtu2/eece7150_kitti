@@ -1,6 +1,7 @@
 from collections import namedtuple
 from typing import Tuple, List
 from parameters import *
+import copy
 
 class State:
     def __init__(self):
@@ -29,8 +30,8 @@ class State:
         """
         Update the non matched features/states
         """
-        self.non_matched_kp = new_non_matched_kp.copy()
-        self.non_matched_desc = new_non_matched_desc.copy()
+        self.non_matched_kp = list(new_non_matched_kp)
+        self.non_matched_desc = list(new_non_matched_desc)
 
     def set_lm_kp(self, new_landmarks, new_keypoints, new_desc):
         """
@@ -40,45 +41,41 @@ class State:
         self._set_registered_keypoints(new_keypoints)
         self._set_registered_descriptors(new_desc)
 
+    def set_pose_history(self, pose_history):
+        self.pose_history = pose_history
+
     def set_candidates(self, candidates):
-        #TODO: Fix this
-        self.candidates = candidates
+        self.candidates = copy.deepcopy(candidates)
 
     def get_pose_history(self) -> List[Pose6Dof]:
-        return self.pose_history.copy()
+        return list(self.pose_history)
     
     def get_landmarks(self) -> List[Point3D]:
-        return self.landmarks.copy()
+        return list(self.landmarks)
     
     def get_registered_kp(self) -> List[Point2D]:
-        return self.registered_kp.copy()
+        return list(self.registered_kp)
     
     def get_registered_desc(self):
-        return self.registered_desc.copy()     
+        return list(self.registered_desc)
        
-    #def get_candidate_kp(self) -> List[Point2D]:
-    #    return self.candidate_kp.copy()
-    
     def _set_landmarks(self, new_landmarks: List[Point3D]):
         """
         Overwites the existing set of landmarks with a new set of keypoints
         """
-        self.landmarks = new_landmarks.copy()
+        self.landmarks = list(new_landmarks)
     
     def _set_registered_keypoints(self, new_keypoints):
         """
         Overwites the existing set of keypoints with a new set of keypoints
         """
-        self.landmarks = new_keypoints.copy()
+        self.landmarks = list(new_keypoints)
     
     def _set_registered_descriptors(self, new_desc):
         """
         Overwites the existing set of keypoints with a new set of keypoints
         """
-        self.registered_desc = new_desc.copy()
-
-    
-    
+        self.registered_desc = list(new_desc)
 
 class Candidates:
     def __init__(self):
@@ -87,18 +84,18 @@ class Candidates:
         self.frames = []        # List of ints corresponding to the first observed frame number 
 
     def set_kps_desc_frame(self, l_kps, l_desc, l_frames):
-        self.keypoints = l_kps.copy()
-        self.descriptors = l_desc.copy()
-        self.frames = l_frames.copy()
+        self.keypoints = list(l_kps)
+        self.descriptors = list(l_desc)
+        self.frames = list(l_frames)
 
     def get_kps(self):
-        return self.keypoints.copy()
+        return list(self.keypoints)
     
     def get_descs(self):
-        return self.descriptors.copy()
+        return list(self.descriptors)
     
     def get_frames(self):
-        return self.frames().copy()
+        return list(self.frames)
     
     def get_frame(self, index):
         return self.frames[index]
@@ -109,9 +106,7 @@ class Candidates:
     def get_desc(self, index):
         return self.descriptors[index]
     
-    def extend(self, new_candidates):
+    def extend(self, new_candidates: Candidates):
         self.keypoints.extend(new_candidates.get_kps())
         self.descriptors.extend(new_candidates.get_descs())
         self.frames.extend(new_candidates.get_frames())
-    #def copy(self) -> Candidates:
-    #    return Candidates()

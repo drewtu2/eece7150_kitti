@@ -85,7 +85,7 @@ class VO_Pipeline:
     
         print(self.current_state)
 
-    def associate_keypoints(self, new_frame):
+    def run_pipeline(self, new_frame):
         '''
         4.1 Assosciate keypoints
             detect features in current_frame
@@ -95,51 +95,59 @@ class VO_Pipeline:
             input: current frame, previous frame, self.prev_state
             output: update self.current_state (keypoints, landmarks)
         '''
-        # TODO: Check these lines again...
         self.prev_state = self.current_state
         self.current_state = State()
+        self.current_state.set_pose_history(self.prev_state.get_pose_history())
 
         reg_kps1 = self.prev_state.get_registered_kp()
         reg_desc1 = self.prev_state.get_registered_desc()
         kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[new_frame])
         
-        #keypoints to be registered in this iteration
-        #candidates to be set in current state
-        temp_registered_kp = []
-        temp_registered_desc = []
-        temp_candidates = Candidates()
-
         #match with registered keypoints
-        reg_kps1, reg_desc1, reg_kps2, reg_desc2, _, _, kps2_non_matched, desc2_non_matched \
-            = match_features(self.feature_matcher, reg_kps1, reg_desc1, kps2, desc2)
+        # kps2_non_matched represent all the keypoints we found in this iteration that are not
+        # already registered landmarks
+        reg_match_index, new_match_index, reg_non_matched_index, new_non_match_index \
+            = match_features_indices(self.feature_matcher, reg_kps1, reg_desc1, kps2, desc2)
+
+        # extract the actual values
+        #reg_kps1 = [reg_kps1[idx] for idx in reg_match_index]
+        #reg_desc1 = [reg_desc1[idx] for idx in reg_match_index]
+        reg_landmarks = [self.prev_state.landmarks[idx] for idx in reg_match_index]
+        reg_kps2 = [kps2[idx] for idx in new_match_index]
+        reg_desc2 = [desc2[idx] for idx in new_match_index]
+        kps2_non_matched = [reg_kps2[idx] for idx in new_non_match_index]
+        desc2_non_matched = [reg_desc2[idx] for idx in new_non_match_index]
+
+        self.current_state.set_lm_kp(reg_landmarks, reg_kps2, reg_desc2)
+        self.estimate_current_pose()    # adds the current pose to current_state
+        
+        temp_candidates = Candidates()  #candidates to be set in current state
 
         #prev candidates -> new landmark kps / current candidates
         #newly_registered_kp, newly_registered_desc: matched and above threshold
-        #candidates: matched but below threshold
+        #candidates: matched but below threshold. Is SUBSET of original candidates. 
         #kps2_non_matched, desc2_non_matched: not matched
-        newly_registered_kp, newly_registered_desc, candidates, kps2_non_matched, desc2_non_matched \
+        proposed_candidate_landmarks, candidates, kps2_non_matched, desc2_non_matched \
             = check_candidate_promotion(self.feature_matcher, self.prev_state.candidates, \
             kps2_non_matched, desc2_non_matched)
         
         temp_candidates.extend(candidates)
-        temp_registered_kp.extend(newly_registered_kp)
-        temp_registered_desc.extend(newly_registered_desc)
         
         #match with non-matched
-        newly_registered_kp, newly_registered_desc, candidates, kps2_non_matched, desc2_non_matched \
+        proposed_non_match_landmarks, candidates, kps2_non_matched, desc2_non_matched \
             = check_non_matched_promotion(self.feature_matcher, self.prev_state.non_matched_kp, \
-            self.prev_state.non_matched_desc, kps2_non_matched, desc2_non_matched)
+            self.prev_state.non_matched_desc, kps2_non_matched, desc2_non_matched, new_frame)
         
         temp_candidates.extend(candidates)
-        temp_registered_kp.extend(newly_registered_kp)
-        temp_registered_desc.extend(newly_registered_desc)
 
+        # Updating the current state
         self.current_state.set_candidates(temp_candidates)
         self.current_state.set_non_matched(kps2_non_matched, desc2_non_matched)
-        #triangulate temp registered keypoints
         
-
-        pass
+        # at this point, current_state is ready to add new landmarks
+        # triangulate proposed registered keypoints
+        self.triangulate_proposed_landmarks(proposed_candidate_landmarks)
+        self.triangulate_proposed_landmarks(proposed_non_match_landmarks)
 
     def estimate_current_pose(self):
         '''
@@ -148,10 +156,19 @@ class VO_Pipeline:
 
             input: self.current_state(keypoints, landmarks)
             output: self.current_pose
-        '''
-        pass
+        '''        
 
-    def triangulate_new_landmarks(self, current_frame, prev_frame):
+        landmarks = self.current_state.get_landmarks()
+        kps2_umat = keypoints_to_umat(self.current_state.get_registered_kp())
+        _, T, mask = T_from_PNP(scale_landmarks(landmarks).T, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
+
+        #Update the current state to be passed on...
+        pose = extract_pose(T)
+
+        self.current_state.add_pose(pose)
+
+
+    def triangulate_proposed_landmarks(self, proposed_landmarks):
         '''
         4.3 Triangulate new landmarks
             triangulate new landmarks from unregistered features and landmarks
