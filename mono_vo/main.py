@@ -16,7 +16,6 @@ class VO_Pipeline:
         self.dataset = self.load_images(root_folder)
         self.current_state = State()
         self.prev_state = State()
-        self.current_pose = np.zeros((3,1))
 
         # Feature Detector
         self.feature_detector = TiledDetector(cv2.ORB_create(), 8, 17)
@@ -51,7 +50,7 @@ class VO_Pipeline:
         kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[f2])
 
         # Match features, throw away candidates
-        kps1, desc1, kps2, desc2, _, _, _, _= match_features(self.feature_matcher, kps1, desc1, kps2, desc2)
+        kps1, desc1, kps2, desc2, _, _, kps2_non_matched, desc2_non_matched = match_features(self.feature_matcher, kps1, desc1, kps2, desc2)
 
         kps1_umat = keypoints_to_umat(kps1)
         kps2_umat = keypoints_to_umat(kps2)
@@ -75,16 +74,18 @@ class VO_Pipeline:
         landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ pose_cam1, INTRINSIC_MATRIX @ pose_cam2, 
         kps1_umat.reshape((-1, 1, 2)), kps2_umat.reshape((-1, 1, 2)))
 
-
+        # Calculate the transition matrix to find image2 
         _, T, mask = T_from_PNP(scale_landmarks(landmarks).T, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
 
-        #Save pose of the current images origin wrt to the world frame!
+        #Update the current state to be passed on...
         pose = extract_pose(T)
         self.current_state.add_pose(pose)
-        self.current_state.add_landmarks(extract_landmarks(landmarks))
+        self.current_state.set_lm_kp(extract_landmarks(landmarks), kps2, desc2)
+        self.current_state.set_non_matched(kps2_non_matched, desc2_non_matched)
     
         print(self.current_state)
-    def associate_keypoints(self, current_frame, prev_frame):
+
+    def associate_keypoints(self, new_frame):
         '''
         4.1 Assosciate keypoints
             detect features in current_frame
@@ -94,6 +95,43 @@ class VO_Pipeline:
             input: current frame, previous frame, self.prev_state
             output: update self.current_state (keypoints, landmarks)
         '''
+        # TODO: Check these lines again...
+        self.prev_state = self.current_state
+        self.current_state = State()
+
+        reg_kps1 = self.prev_state.get_registered_kp()
+        reg_desc1 = self.prev_state.get_registered_desc()
+        kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[new_frame])
+        
+        #These are kps we are registering this iteration
+        temp_registered_kp = []
+        temp_registered_desc = []
+
+        #match with registered keypoints
+        reg_kps1, reg_desc1, reg_kps2, reg_desc2, _, _, kps2_non_matched, desc2_non_matched \
+            = match_features(self.feature_matcher, reg_kps1, reg_desc1, kps2, desc2)
+
+        #match with candidates
+        newly_registered_kp, newly_registered_desc, candidates, kps2_non_matched, desc2_non_matched \
+            = check_candidate_promotion(self.feature_matcher, self.prev_state.get_candidates(), \
+            kps2_non_matched, desc2_non_matched)
+        
+        self.current_state.set_candidates(candidates)
+        temp_registered_kp.extend(newly_registered_kp)
+        temp_registered_desc.extend(newly_registered_desc)
+
+        self.current_state.newly_registered_kp.extend(newly_registered_kp)
+        
+        #match with non-matched
+        newly_registered_kp, newly_registered_desc, candidates, kps2_non_matched, desc2_non_matched \
+            = check_non_matched_promotion(self.feature_matcher, self.prev_state.non_matched_kp, \
+            self.prev_state.non_matched_desc, kps2_non_matched, desc2_non_matched)
+        
+        temp_registered_kp.extend(newly_registered_kp)
+        temp_registered_desc.extend(newly_registered_desc)
+        self.current_state.set_non_matched(kps2_non_matched, desc2_non_matched)
+        self.current_state.get_candidates().extend(candidates)
+
         pass
 
     def estimate_current_pose(self):

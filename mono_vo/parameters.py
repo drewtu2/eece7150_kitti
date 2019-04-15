@@ -8,7 +8,8 @@ Pose6Dof = Tuple[float, float, float, float, float, float]
 Point2D = Tuple[float, float]
 Point3D = Tuple[float, float, float]
 
-LOWE_RATIO = .7
+LOWE_RATIO = .7                         
+CANDIDATE_THRESHOLD = 5                 # in pixels
 
 INTRINSIC_MATRIX = np.float32([ 
  [718.856,   0.0,   607.1928],

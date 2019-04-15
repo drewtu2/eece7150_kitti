@@ -1,0 +1,13 @@
+# TODO
+- finish  `check_non_matched_promotion`
+    - add tracking of frame 
+    - finish....
+- triangulate 
+- estimate pose
+- update `current state`
+    - register points
+    - landmarks
+    - candidates
+    - non matched
+    - update pose history
+
