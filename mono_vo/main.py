@@ -103,34 +103,41 @@ class VO_Pipeline:
         reg_desc1 = self.prev_state.get_registered_desc()
         kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[new_frame])
         
-        #These are kps we are registering this iteration
+        #keypoints to be registered in this iteration
+        #candidates to be set in current state
         temp_registered_kp = []
         temp_registered_desc = []
+        temp_candidates = Candidates()
 
         #match with registered keypoints
         reg_kps1, reg_desc1, reg_kps2, reg_desc2, _, _, kps2_non_matched, desc2_non_matched \
             = match_features(self.feature_matcher, reg_kps1, reg_desc1, kps2, desc2)
 
-        #match with candidates
+        #prev candidates -> new landmark kps / current candidates
+        #newly_registered_kp, newly_registered_desc: matched and above threshold
+        #candidates: matched but below threshold
+        #kps2_non_matched, desc2_non_matched: not matched
         newly_registered_kp, newly_registered_desc, candidates, kps2_non_matched, desc2_non_matched \
-            = check_candidate_promotion(self.feature_matcher, self.prev_state.get_candidates(), \
+            = check_candidate_promotion(self.feature_matcher, self.prev_state.candidates, \
             kps2_non_matched, desc2_non_matched)
         
-        self.current_state.set_candidates(candidates)
+        temp_candidates.extend(candidates)
         temp_registered_kp.extend(newly_registered_kp)
         temp_registered_desc.extend(newly_registered_desc)
-
-        self.current_state.newly_registered_kp.extend(newly_registered_kp)
         
         #match with non-matched
         newly_registered_kp, newly_registered_desc, candidates, kps2_non_matched, desc2_non_matched \
             = check_non_matched_promotion(self.feature_matcher, self.prev_state.non_matched_kp, \
             self.prev_state.non_matched_desc, kps2_non_matched, desc2_non_matched)
         
+        temp_candidates.extend(candidates)
         temp_registered_kp.extend(newly_registered_kp)
         temp_registered_desc.extend(newly_registered_desc)
+
+        self.current_state.set_candidates(temp_candidates)
         self.current_state.set_non_matched(kps2_non_matched, desc2_non_matched)
-        self.current_state.get_candidates().extend(candidates)
+        #triangulate temp registered keypoints
+        
 
         pass
 

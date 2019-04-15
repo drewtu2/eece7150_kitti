@@ -13,7 +13,7 @@ class State:
         self.landmarks = []                     # List of Tuples(X, Y, Z) - Index corresponds to matching registered keypoint
         
         # Candidates
-        self.candidate_kp = Candidates()        # Candidate Keypoints
+        self.candidates = Candidates()       
         
         # These are the current frames non matched features which need to be carried forward
         self.non_matched_kp = []
@@ -40,9 +40,9 @@ class State:
         self._set_registered_keypoints(new_keypoints)
         self._set_registered_descriptors(new_desc)
 
-    def update_candidates(self, frame, candidate, descriptor):
+    def set_candidates(self, candidates):
         #TODO: Fix this
-        raise NotImplementedError()
+        self.candidates = candidates
 
     def get_pose_history(self) -> List[Pose6Dof]:
         return self.pose_history.copy()
@@ -98,7 +98,7 @@ class Candidates:
         return self.descriptors.copy()
     
     def get_frames(self):
-        return self.frames()
+        return self.frames().copy()
     
     def get_frame(self, index):
         return self.frames[index]
