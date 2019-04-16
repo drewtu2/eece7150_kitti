@@ -1,19 +1,19 @@
 # Monocular VO Pipeline
 
 ## End to End Pipeline
-![End to End Pipeline](reports/vo_pipeline.png)
+![End to End Pipeline](report/vo_pipeline.png)
 
 ## Initialize Pipeline
-![Initialize Pipeline](reports/initialize_pipeline.png)
+![Initialize Pipeline](report/initialize_pipeline.png)
 
 ## Initialize Iteration
-![Pipeline Iteration](reports/pipeline_iteration.png)
+![Pipeline Iteration](report/pipeline_iteration.png)
 
 ## Associate Keypoints 
-![Associate Keypoints](reports/associate_keypoints.png)
+![Associate Keypoints](report/associate_keypoints.png)
 
 ## Estimate Pose 
-![Estimate Pose](reports/estimate_pose.png)
+![Estimate Pose](report/estimate_pose.png)
 
 ## Triangulate Landmarks
-![Triangulate Landmarks](reports/triangulate_landmarks.png)
+![Triangulate Landmarks](report/triangulate_landmarks.png)
