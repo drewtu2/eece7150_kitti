@@ -6,8 +6,8 @@ from typing import *
 from VoClasses import *
 from helpers import *
 from parameters import *
-from vik_plotters import setup_plots, update_plot
-from plotters import plot_3d_landmarks, setup_plots, frame_summary, display_of
+from vik_plotters import setup_3d_plots, update_plot
+from plotters import setup_img_plot, frame_summary, display_of, displayLandmarkMatches
 
 import matplotlib.pyplot as plt
 
@@ -25,11 +25,11 @@ class VO_Pipeline:
         self.feature_detector = TiledDetector(cv2.ORB_create(), 17, 8)
         self.feature_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
 
-        self.fig, self.ax = setup_plots()
-        self.feature_fig = plt.figure()
-        self.feature_ax = self.feature_fig.add_subplot(111)        
-        self.of_fig = plt.figure()
-        self.of_ax = self.of_fig.add_subplot(111)        
+        self.fig, self.ax = setup_3d_plots(1)
+        self.feature_fig, self.feature_ax = setup_img_plot(2)
+        self.of_fig, self.of_ax = setup_img_plot(3)
+        self.match_fig, self.match_ax = setup_img_plot(4)
+
         self.frame_id = 0
     
     def run(self):
@@ -42,8 +42,9 @@ class VO_Pipeline:
                 self.current_state.get_landmarks())
             #plot_3d_landmarks(self.fig, self.ax, self.current_state.get_pose_history()[-1], \
             #    self.current_state.get_landmarks())
-            frame_summary(self.feature_ax, self.dataset[index], self.current_state)
-            
+            frame_summary(self.feature_fig, self.feature_ax, \
+                self.dataset[index], self.current_state)
+            plt.pause(.05)
 
     def load_images(self, image_folder):
         """
@@ -75,7 +76,9 @@ class VO_Pipeline:
         kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[f2])
 
         # Match features, throw away candidates
-        kps1, desc1, kps2, desc2, _, _, kps2_non_matched, desc2_non_matched = match_features(self.feature_matcher, kps1, desc1, kps2, desc2)
+        good_matches, non_matches = match_features(self.feature_matcher, kps1, desc1, kps2, desc2)
+        kps1, desc1, kps2, desc2, _, _, kps2_non_matched, desc2_non_matched = \
+            matches_to_keypoints(kps1, desc1, kps2, desc2, good_matches, non_matches)
 
         kps1_umat = keypoints_to_umat(kps1)
         kps2_umat = keypoints_to_umat(kps2)
@@ -129,8 +132,15 @@ class VO_Pipeline:
         #match with registered keypoints
         # kps2_non_matched represent all the keypoints we found in this iteration that are not
         # already registered landmarks
+        good_matches, non_matches \
+            = match_features(self.feature_matcher, reg_kps1, np.array(reg_desc1), kps2, desc2)
         reg_match_index, new_match_index, reg_non_matched_index, new_non_match_index \
-            = match_features_indices(self.feature_matcher, reg_kps1, np.array(reg_desc1), kps2, desc2)
+            = matches_to_indices(good_matches, non_matches)
+        
+        displayLandmarkMatches(self.match_fig, self.match_ax,\
+            self.dataset[new_frame-1], reg_kps1,
+            self.dataset[new_frame], kps2,
+            good_matches, non_matches)
 
         # extract the actual values
         #reg_kps1 = [reg_kps1[idx] for idx in reg_match_index]
@@ -257,7 +267,8 @@ class VO_Pipeline:
 
                 self.current_state.add_lm_kp(lm, list(value[1]), list(value[2]))
             if len(kps_prev) > 0:
-                display_of(self.of_ax, self.dataset[self.frame_id].copy(), kps_prev, kps_current)
+                display_of(self.of_fig, self.of_ax, \
+                    self.dataset[self.frame_id].copy(), kps_prev, kps_current)
     
 if __name__ == "__main__":
     vp = VO_Pipeline("sample/*.png")

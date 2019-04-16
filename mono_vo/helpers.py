@@ -7,7 +7,7 @@ from VoClasses import *
 def match_features(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
     """
     Matches a set of features and points using the given features matcher and 
-    filtering the points using the LOWE RATIO Test.
+    filtering the points using the LOWE RATIO Test. Returns the raw matches and non matches obj. 
     """
     if isinstance(desc1, list):
         desc1 = np.array(desc1)
@@ -24,6 +24,20 @@ def match_features(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
             good_matches.append(m)
         else:
             non_matches.append(m)
+
+    print("Matches Pre Ratio Test: " + str(len(matches)))
+    print("Matches Post Ratio Test: " + str(len(good_matches)))
+
+    if len(good_matches) < 5:
+        print("\n\nONLY {} MATCHES DETECTED\n\n".format(len(good_matches)))
+
+    return good_matches, non_matches
+
+def matches_to_keypoints(kp1, desc1, kp2, desc2, good_matches, non_matches):
+    """
+    Matches a set of features and points using the given features matcher and 
+    filtering the points using the LOWE RATIO Test.
+    """
 
     # Filter out the kps and desc for the good matches
     kp1_good = [kp1[mat.trainIdx] for mat in good_matches]
@@ -36,49 +50,21 @@ def match_features(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
     desc1_non_match = [desc1[mat.trainIdx] for mat in non_matches]
     desc2_non_match = [desc2[mat.queryIdx] for mat in non_matches]
 
-
-    print("Matches Pre Ratio Test: " + str(len(matches)))
-    print("Matches Post Ratio Test: " + str(len(good_matches)))
-
-    if len(good_matches) < 5:
-        print("\n\nONLY {} MATCHES DETECTED\n\n".format(len(good_matches)))
-
     return kp1_good, desc1_good, kp2_good, desc2_good, \
            kp1_non_match, desc1_non_match, kp2_non_match, desc2_non_match
 
-def match_features_indices(matcher, kp1, desc1, kp2, desc2, ratio = LOWE_RATIO):
+def matches_to_indices(good_matches, non_matches):
     """
     Matches a set of features and points using the given features matcher and 
     filtering the points using the LOWE RATIO Test.
     """
-    if isinstance(desc1, list):
-        desc1 = np.array(desc1)
-    if isinstance(desc2, list):
-        desc2 = np.array(desc2)
-    matches = matcher.knnMatch(desc2, desc1, k=2)
-
-    # Apply ratio test
-    good_matches = []
-    non_matches = []
-    for m, n in matches:
-        if m.distance < ratio * n.distance:
-            good_matches.append(m)
-        else:
-            non_matches.append(m)
-
+    
     # Filter out the kps and desc for the good matches
     kp1_good = [mat.trainIdx for mat in good_matches]
     kp2_good = [mat.queryIdx for mat in good_matches]
     
     kp1_non_match = [mat.trainIdx for mat in non_matches]
     kp2_non_match = [mat.queryIdx for mat in non_matches]
-
-
-    print("Matches Pre Ratio Test: " + str(len(matches)))
-    print("Matches Post Ratio Test: " + str(len(good_matches)))
-
-    if len(good_matches) < 5:
-        print("\n\nONLY {} MATCHES DETECTED\n\n".format(len(good_matches)))
 
     return kp1_good, kp2_good, kp1_non_match, kp2_non_match
 
@@ -111,9 +97,11 @@ def check_non_matched_promotion(feature_matcher, non_matched_kps, non_matched_de
 
     # get the INDICES of the matches between images (instead of the actual kps/desc)
     # we can use the indices to access the kps/desc/frames accordingly. 
+    good_matches, non_matches \
+        = match_features(feature_matcher, non_matched_kps, non_matched_desc, new_kps, new_desc)
     temp_matched_kps, temp_matched_desc, temp_new_matched_kps, temp_new_matched_desc, \
         non_matched_kps, non_matched_desc, new_kps, new_desc = \
-        match_features(feature_matcher, non_matched_kps, non_matched_desc, new_kps, new_desc)
+        matches_to_keypoints(non_matched_kps, non_matched_desc, new_kps, new_desc, good_matches, non_matches)
 
     for index in range(len(temp_matched_kps)):
 
@@ -177,8 +165,10 @@ def check_candidate_promotion(feature_matcher, candidates, new_kps, new_desc):
 
     # get the INDICES of the matches between images (instead of the actual kps/desc)
     # we can use the indices to access the kps/desc/frames accordingly. 
+    good_matches, non_matches \
+        = match_features(feature_matcher, candidate_kp, candidate_desc, new_kps, new_desc)
     candidate_match_index, new_match_index, candidate_non_matched_index, new_non_match_index \
-        = match_features_indices(feature_matcher, candidate_kp, candidate_desc, new_kps, new_desc)
+        = matches_to_indices(good_matches, non_matches)
 
     for ii in range(len(candidate_match_index)):
         index = candidate_match_index[ii]

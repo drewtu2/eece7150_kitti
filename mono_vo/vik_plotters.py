@@ -100,14 +100,14 @@ def update_plot(fig, ax2, new_pose, new_landmarks, lm_graph=None):
     # Update the points using line_obj
     #lm_graph = plot_3d_points(ax2, new_landmarks, linestyle="", marker=".", markersize=2, color='r', line_obj=lm_graph)
     
-    fig.canvas.draw_idle(); plt.pause(0.01) # this updates the plot
+    fig.canvas.draw_idle(); # Will draw on the next pause
     #set_axes_equal(ax2)
     #ax2.view_init(0, -90) # Show top view
     return lm_graph
 
-def setup_plots():
+def setup_3d_plots(fig_num):
     # Setup figure
-    fig1 = plt.figure(1)
+    fig1 = plt.figure(fig_num)
     ax1 = fig1.add_subplot(111, projection='3d')
     fig1.subplots_adjust(0,0,1,1)
     #plt.get_current_fig_manager().window.setGeometry(640,430,640,676)
