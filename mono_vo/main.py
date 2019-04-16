@@ -45,6 +45,7 @@ class VO_Pipeline:
             frame_summary(self.feature_fig, self.feature_ax, \
                 self.dataset[index], self.current_state)
             plt.pause(.05)
+            input("hit enter")
 
     def load_images(self, image_folder):
         """

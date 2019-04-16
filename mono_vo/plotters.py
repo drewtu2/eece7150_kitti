@@ -26,8 +26,8 @@ def displayLandmarkMatches(fig, ax, img_prev, kp_prev, img_current, kp_current, 
     """
     Draw the Landmark Matches on the given axes
     """
-    green = (0, 0, 255)
-    red = (0, 255, 0)
+    green = (0, 255, 0)
+    red = (0, 0, 255)
     yellow = (0, 255, 255)
     kp_current = kp_current.tolist()
     out = cv2.drawMatches(img_current, kp_current, img_prev, kp_prev, matches, None,
