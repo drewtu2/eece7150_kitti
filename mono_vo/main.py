@@ -6,6 +6,10 @@ from typing import *
 from VoClasses import *
 from helpers import *
 from parameters import *
+from vik_plotters import setup_plots, update_plot
+from plotters import plot_3d_landmarks, setup_plots, frame_summary, display_of
+
+import matplotlib.pyplot as plt
 
 class VO_Pipeline:
     def __init__(self, root_folder):
@@ -18,14 +22,28 @@ class VO_Pipeline:
         self.prev_state = State()
 
         # Feature Detector
-        self.feature_detector = TiledDetector(cv2.ORB_create(), 8, 17)
+        self.feature_detector = TiledDetector(cv2.ORB_create(), 17, 8)
         self.feature_matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+
+        self.fig, self.ax = setup_plots()
+        self.feature_fig = plt.figure()
+        self.feature_ax = self.feature_fig.add_subplot(111)        
+        self.of_fig = plt.figure()
+        self.of_ax = self.of_fig.add_subplot(111)        
+        self.frame_id = 0
     
     def run(self):
         self.initialize_pipeline(0, 1)
 
         for index in range(2, len(self.dataset) - 1):
+            self.frame_id = index
             self.run_iteration(index)
+            update_plot(self.fig, self.ax, self.current_state.get_pose_history()[-1], \
+                self.current_state.get_landmarks())
+            #plot_3d_landmarks(self.fig, self.ax, self.current_state.get_pose_history()[-1], \
+            #    self.current_state.get_landmarks())
+            frame_summary(self.feature_ax, self.dataset[index], self.current_state)
+            
 
     def load_images(self, image_folder):
         """
@@ -33,9 +51,11 @@ class VO_Pipeline:
         """
         img_array = []
         
-        for filename in sorted(glob.glob(image_folder)):
-            img = cv2.imread(filename)
-            img_array.append(img)
+
+        for i, filename in enumerate(sorted(glob.glob(image_folder))):
+            if i%2 == 0:
+                img = cv2.imread(filename)
+                img_array.append(img)
         
         print("Loaded {} images".format(len(img_array)))
         return img_array
@@ -62,10 +82,10 @@ class VO_Pipeline:
 
         f, cx, cy = extract_parameters()
         # Find the esential matrix, throw away mask
-        essential_matrix, _ = cv2.findEssentialMat(kps1_umat, kps2_umat, focal=f, pp= (cx, cy))
+        essential_matrix, mask = cv2.findEssentialMat(kps1_umat, kps2_umat, focal=f, pp= (cx, cy))
 
         # Find the pose 
-        _, rotation, translation, _ = cv2.recoverPose(essential_matrix, kps1_umat, kps2_umat, INTRINSIC_MATRIX, 50.0)
+        _, rotation, translation, _ = cv2.recoverPose(essential_matrix, kps1_umat, kps2_umat, INTRINSIC_MATRIX, 50.0, mask=mask)
 
         #   R    T
         #  3x3  3x1
@@ -102,7 +122,6 @@ class VO_Pipeline:
         self.prev_state = self.current_state
         self.current_state = State()
         self.current_state.set_pose_history(self.prev_state.get_pose_history())
-
         reg_kps1 = self.prev_state.get_registered_kp()
         reg_desc1 = self.prev_state.get_registered_desc()
         kps2, desc2 = self.feature_detector.detectAndCompute(self.dataset[new_frame])
@@ -151,7 +170,7 @@ class VO_Pipeline:
         # at this point, current_state is ready to add new landmarks
         # triangulate proposed registered keypoints
         self.triangulate_proposed_landmarks(proposed_candidate_landmarks, False)
-        self.triangulate_proposed_landmarks(proposed_non_match_landmarks, True)
+        #self.triangulate_proposed_landmarks(proposed_non_match_landmarks, True)
 
     def estimate_current_pose(self):
         '''
@@ -165,11 +184,18 @@ class VO_Pipeline:
         landmarks = self.current_state.get_landmarks()
         landmarks = np.array(landmarks)
         kps2_umat = keypoints_to_umat(self.current_state.get_registered_kp())
-        _, T, mask = T_from_PNP(landmarks, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
-
+        success, T, mask = T_from_PNP(landmarks, kps2_umat.reshape(-1, 1, 2), INTRINSIC_MATRIX, np.float32([]))
+        if not success:
+            pass                
         #Update the current state to be passed on...
         self.current_state.add_pose(T)
+        
+        # Filters the lm/kp/desc based on the mask from pnp
+        filtered_landmarks = [landmarks[ii] for ii,v in enumerate(mask) if v]            
+        filtered_kp= [self.current_state.get_registered_kp()[ii] for ii,v in enumerate(mask) if v]            
+        filtered_desc= [self.current_state.get_registered_desc()[ii] for ii,v in enumerate(mask) if v]
 
+        self.current_state.set_lm_kp(filtered_landmarks, filtered_kp, filtered_desc)
 
     def triangulate_proposed_landmarks(self, proposed_landmarks, is_nonmatched):
         '''
@@ -186,15 +212,21 @@ class VO_Pipeline:
 
             pose_cam1 = self.current_state.get_pose_history()[-2][0:3, :]
             pose_cam2 = self.current_state.get_pose_history()[-1][0:3, :]
+            
+            temp_pose_cam1, temp_pose_cam2 = change_pose_cam(pose_cam1, pose_cam2)
 
-            landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ pose_cam1, INTRINSIC_MATRIX @ pose_cam2, 
+            T_1_to_world = np.vstack([pose_cam1, [0,0,0,1]])
+
+            landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ temp_pose_cam1, INTRINSIC_MATRIX @ temp_pose_cam2, \
             kps1_umat.reshape((-1, 1, 2)), kps2_umat.reshape((-1, 1, 2)))
+            landmarks = T_1_to_world @ landmarks
             lm = extract_landmarks(landmarks)
             self.current_state.add_lm_kp(lm, list(proposed_landmarks[2]), list(proposed_landmarks[3]))
         else:
             # input is a List[Tuple(kp1, desc1, frame1, kp2, desc2)]
             batches = batch_proposed_landmarks(proposed_landmarks)
-
+            kps_prev = []
+            kps_current = []
             for key, value in batches.items():
                 kps1_umat = keypoints_to_umat(value[0])
                 kps2_umat = keypoints_to_umat(value[1])
@@ -202,10 +234,30 @@ class VO_Pipeline:
                 pose_cam1 = self.current_state.get_pose_history()[key][0:3, :]
                 pose_cam2 = self.current_state.get_pose_history()[-1][0:3, :]
                 
-                landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ pose_cam1, INTRINSIC_MATRIX @ pose_cam2, 
+                temp_pose_cam1, temp_pose_cam2 = change_pose_cam(pose_cam1, pose_cam2)
+
+                T_1_to_world = np.vstack([pose_cam1, [0,0,0,1]])
+
+                landmarks = cv2.triangulatePoints(INTRINSIC_MATRIX @ temp_pose_cam1, INTRINSIC_MATRIX @ temp_pose_cam2, \
                 kps1_umat.reshape((-1, 1, 2)), kps2_umat.reshape((-1, 1, 2)))
+                landmarks = T_1_to_world @ landmarks
                 lm = extract_landmarks(landmarks)
+
+                kps_prev.extend(value[0])
+                kps_current.extend(value[1])
+
+                #good_lm = []
+                #good_kp = []
+                #good_desc = []
+                
+                #for index in range(len(lm)):
+                #    if lm[z] 
+
+
+
                 self.current_state.add_lm_kp(lm, list(value[1]), list(value[2]))
+            if len(kps_prev) > 0:
+                display_of(self.of_ax, self.dataset[self.frame_id].copy(), kps_prev, kps_current)
     
 if __name__ == "__main__":
     vp = VO_Pipeline("sample/*.png")

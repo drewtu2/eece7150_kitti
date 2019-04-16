@@ -21,7 +21,7 @@ class State:
         self.non_matched_desc = []
         
         # History of all poses
-        self.pose_history = [np.eye(4)]
+        self.pose_history = [np.eye(4)[0:3, :]]
 
     def add_pose(self, new_pose: Pose6Dof):
         self.pose_history.append(new_pose)

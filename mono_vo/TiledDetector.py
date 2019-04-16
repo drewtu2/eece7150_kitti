@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from scipy import spatial
 
-SHOW_TILING = False
+SHOW_TILING = False 
 
 class TiledDetector:
     """
@@ -39,10 +39,11 @@ class TiledDetector:
 
         # Get shapes of stuff, make sure that things "fit"...
         HEIGHT, WIDTH, CHANNEL = image.shape
-        assert WIDTH%self.tiles_y == 0, "Width is not a multiple of tilex"
-        assert HEIGHT%self.tiles_x == 0, "Height is not a multiple of tiley"
-        w_width = int(WIDTH/self.tiles_y)
-        w_height = int(HEIGHT/self.tiles_x)
+        assert WIDTH%self.tiles_x == 0, "Width is not a multiple of tilex"
+        assert HEIGHT%self.tiles_y == 0, "Height is not a multiple of tiley"
+        
+        w_width = int(WIDTH/self.tiles_x)
+        w_height = int(HEIGHT/self.tiles_y)
 
         kps, dsc = [], []
         for row in range(0, self.tiles_y):

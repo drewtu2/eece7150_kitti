@@ -10,13 +10,63 @@ from typing import List, Dict, Tuple
 
 Odom = Tuple[float, float, float]
 LinkDict = Dict[int, Dict[int, Odom]]
-def rotation_matrix_fromRPY(R,P,Y):
-   R_mat = np.array([[np.cos(Y)*np.cos(P), np.cos(Y)*np.sin(P)*np.sin(R)-np.sin(Y)*np.cos(R), np.cos(Y)*np.sin(P)*np.cos(R)+np.sin(Y)*np.sin(R)],
-       [np.sin(Y)*np.cos(P), np.sin(Y)*np.sin(P)*np.sin(R)+np.cos(Y)*np.cos(R), np.sin(Y)*np.sin(P)*np.sin(R)-np.cos(Y)*np.sin(R)],
-       [-np.sin(P), np.cos(P)*np.sin(R), np.cos(P)*np.cos(R)]])
-   return R_mat
 
-def plot_3d_landmarks(pose,landmarks):
+#########################
+# Modified James/Chris 
+#########################
+def plot_3d_landmarks(fig, ax, new_pose, landmarks):
+    """
+    @param pose: 3x4 [R | T]
+    @param landmarks: List(Point3D) 
+    """
+    
+    xFrame=3
+    yFrame=1
+    zFrame=xFrame/3
+    
+    transl = new_pose[:,-1]
+    frameCorners=np.vstack(([-xFrame,yFrame,zFrame],[-xFrame,yFrame,-zFrame],[xFrame,yFrame,-zFrame],[xFrame,yFrame,zFrame],[-xFrame,yFrame,zFrame]))
+    #rotationMatrix=rotation_matrix_fromRPY(values[i,3],values[i,4],values[i,5])
+    rotationMatrix=new_pose[0:3, 0:3]
+
+    for j in range(5):
+        frameCorners[j,:]=(rotationMatrix@frameCorners[j,:].T).T
+        
+    frameCorners[:,0] += transl[0]
+    frameCorners[:,1] += transl[1]
+    frameCorners[:,2] += transl[2]
+    ax.plot(frameCorners[:,0],frameCorners[:,1],frameCorners[:,2], color='b',alpha=0.5)
+    for j in range(5):
+        ax.plot((frameCorners[j,0],transl[0]),(frameCorners[j,1],transl[1]),(frameCorners[j,2],transl[2]), color='b',alpha=0.5)
+    
+    ax.scatter(transl[0], transl[1], transl[2], cmap='gist_ncar', s=100)
+    
+    landmarkValues = np.asarray(landmarks)
+    a,b = landmarkValues.shape
+    index = range(a)
+    ax.scatter(landmarkValues[:,0],landmarkValues[:,1],landmarkValues[:,2], c=index, cmap='cool',s=10, alpha=1)
+    #ax.scatter(landmarkValues[:,0],landmarkValues[:,1],landmarkValues[:,2], c='k', s=10, alpha=0.5)
+    plt.show()
+    
+def setup_plots():
+    # Setup figure
+    fig1 = plt.figure(1)
+    ax1 = fig1.add_subplot(111, projection='3d')
+    fig1.subplots_adjust(0,0,1,1)
+    #plt.get_current_fig_manager().window.setGeometry(640,430,640,676)
+    ax1.set_aspect('equal')       
+    fig1.suptitle('Cool plot')
+
+    return fig1, ax1
+    
+##################
+# Old...
+##################
+def plot_3d_landmarks_old(pose, landmarks):
+    """
+    @param pose: 3x4 [R | T]
+    @param landmarks: List(Point3D) 
+    """
     values=np.asarray(pose)
     a,b=values.shape
     index=range(a)
@@ -25,11 +75,15 @@ def plot_3d_landmarks(pose,landmarks):
     xFrame=3
     yFrame=1
     zFrame=xFrame/3
+    
     for i in range(np.size(values,0)):
         frameCorners=np.vstack(([-xFrame,yFrame,zFrame],[-xFrame,yFrame,-zFrame],[xFrame,yFrame,-zFrame],[xFrame,yFrame,zFrame],[-xFrame,yFrame,zFrame]))
-        rotationMatrix=rotation_matrix_fromRPY(values[i,3],values[i,4],values[i,5])
+        #rotationMatrix=rotation_matrix_fromRPY(values[i,3],values[i,4],values[i,5])
+        rotationMatrix=pose[0:3, 0:3]
+
         for j in range(5):
             frameCorners[j,:]=(rotationMatrix@frameCorners[j,:].T).T
+        
         frameCorners[:,0]+=values[i,0]
         frameCorners[:,1]+=values[i,1]
         frameCorners[:,2]+=values[i,2]
@@ -44,6 +98,7 @@ def plot_3d_landmarks(pose,landmarks):
     ax.scatter(landmarkValues[:,0],landmarkValues[:,1],landmarkValues[:,2], c=index, cmap='cool',s=10, alpha=1)
     #ax.scatter(landmarkValues[:,0],landmarkValues[:,1],landmarkValues[:,2], c='k', s=10, alpha=0.5)
     plt.show()
+
 def get_image_corners(shape):
     """
     Takes in an image shape and returns the corners as an 3x4 matrix
@@ -158,6 +213,29 @@ def displayMatches(img_left, kp1, img_right, kp2, matches, mask, display_invalid
                                    matchesMask=np.invert(bool_mask).ravel().tolist(),
                                    flags=1)
     return img_valid
+
+def display_of(ax, image, kp_from, kp_to):
+    for index in range(len(kp_from)):
+        cv2.arrowedLine(image, tuple(np.array(kp_from[index].pt, dtype=int)), tuple(np.array(kp_to[index].pt, dtype=int)), (0, 255, 0), 2)
+    ax.imshow(image)
+
+def displayKeypoints(img, kp, b, g, r):
+  '''
+  This function takes an image and set of keypoints as well as 3
+  values that represents an RGB color to plot the keypoints
+  '''
+  #b=0,g=255,r=0 #green
+  #b=0,g=0,r=255 #red
+  img_out = cv2.drawKeypoints(img, kp, outImage=np.array([]), color=(b,g,r))
+  
+  return img_out
+
+def frame_summary(ax, base_image, current_state):
+    #first plot keypoints
+    img_kp = displayKeypoints(base_image, current_state.get_registered_kp(), 0, 255, 0)
+    #then plot candidates
+    img_kp = displayKeypoints(img_kp, current_state.candidates.get_kps(), 0, 0, 255)
+    ax.imshow(cv2.cvtColor(img_kp, cv2.COLOR_BGR2RGB))
 
 if __name__ == "__main__":
     pose_history = np.array([[5,0,-4,0,0,0],

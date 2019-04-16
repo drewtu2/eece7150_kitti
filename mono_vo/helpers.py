@@ -219,6 +219,16 @@ def euclidean_distance_from_kp(kp1, kp2):
 
     return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
+def change_pose_cam(pose_cam1, pose_cam2):
+    
+    temp_pose_cam1 = np.eye(4)[0:3,:]
+    pc1 = np.vstack([pose_cam1, [0,0,0,1]])
+    pc2 = np.vstack([pose_cam2, [0,0,0,1]])
+
+    temp_pose_cam2 = np.linalg.inv(pc1) @ pc2
+
+    return temp_pose_cam1, temp_pose_cam2[0:3, :]
+
 ####################################################
 # Extraction Helper Functions
 ####################################################
@@ -306,22 +316,6 @@ def batch_proposed_landmarks(proposed_landmarks):
     return batches
 
 
-
-####################################################
-# Triangulation of Proposed Keypoints
-####################################################
-
-
-def triangulate_proposed(proposed_landmarks, pose_history):
-    """
-    @proposed_landmarks: List[Tuple(kp1, desc1, frame1, kp2, desc2)]
-    @pose_history: List[Pose6Dof]
-    """
-
-    # Sort tuples based on frame id
-    # Batch sorted tuples
-
-
 #############
 # From Vikrant
 #############
@@ -340,7 +334,7 @@ def T_from_PNP(coord_3d, img_pts, K, D):
         R_to_obj, _ = cv2.Rodrigues(rvec_to_obj)
         mask = np.zeros(len(img_pts)).astype('bool')
         mask[inliers[:,0]]=True
-
+        print("PNP Inliners: ", np.sum(mask))
         return success, compose_T(*pose_inv(R_to_obj, tvecs_to_obj)), mask
     else: 
         print("NO POSE CALCULATED")
